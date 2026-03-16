@@ -111,22 +111,6 @@
   .status-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px 0; }
   .status-msg.err { color: #ff5f57; }
 
-  /* TABLE */
-  .table-wrap { overflow-x: auto; margin-top: 4px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead th {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 0.08em; padding: 0 12px 10px 0;
-    text-align: left; border-bottom: 1px solid var(--border);
-  }
-  tbody td { padding: 10px 12px 10px 0; color: var(--text-dim); border-bottom: 1px solid rgba(37,42,56,0.5); }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover td { color: var(--text); }
-  .level-chip {
-    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
-    background: rgba(79,255,176,0.1); padding: 2px 8px; border-radius: 4px; display: inline-block;
-  }
-
   @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 </style>
 </head>
@@ -186,16 +170,6 @@
     <div class="status-msg" id="draw-status"></div>
   </div>
 
-  <!-- TABLE -->
-  <div class="card">
-    <div class="card-title">Všechny záznamy</div>
-    <div class="table-wrap">
-      <table id="results-table">
-        <thead><tr><th>#</th><th>Jméno</th><th>Level</th><th>Název</th><th>Čas</th></tr></thead>
-        <tbody id="results-body"><tr><td colspan="5" style="color:var(--text-muted);padding:16px 0">Načítám…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
 
 </div>
 
@@ -209,14 +183,25 @@ var LEVEL_TITLES = {
   7: '10+ agentů', 8: 'Orchestrátor'
 };
 
-var allResults = [];
 var chartInstance = null;
 
-function apiHeaders() {
+function rpcHeaders() {
   return {
+    'Content-Type': 'application/json',
     'apikey': SUPABASE_KEY,
     'Authorization': 'Bearer ' + SUPABASE_KEY
   };
+}
+
+function rpc(name) {
+  return fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+    method: 'POST',
+    headers: rpcHeaders(),
+    body: JSON.stringify({})
+  }).then(function(res) {
+    if (!res.ok) return res.text().then(function(t) { throw new Error('HTTP ' + res.status + ': ' + t); });
+    return res.json();
+  });
 }
 
 function loadData() {
@@ -226,18 +211,10 @@ function loadData() {
   document.getElementById('chart-status').textContent = 'Načítám data…';
   document.getElementById('chart-status').className = 'status-msg';
 
-  fetch(SUPABASE_URL + '/rest/v1/results?select=*&order=created_at.asc', {
-    headers: apiHeaders()
-  })
-  .then(function(res) {
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
-  })
+  rpc('get_level_stats')
   .then(function(data) {
-    allResults = data;
     renderStats(data);
     renderChart(data);
-    renderTable(data);
     document.getElementById('chart-status').textContent = '';
     btn.disabled = false;
     btn.textContent = '↻ Obnovit data';
@@ -250,6 +227,7 @@ function loadData() {
   });
 }
 
+// data = [{level, cnt}, ...]
 function renderStats(data) {
   if (!data.length) {
     document.getElementById('stat-total').textContent = '0';
@@ -259,35 +237,27 @@ function renderStats(data) {
     return;
   }
 
-  // Count per level
-  var counts = {};
-  var sum = 0;
+  var total = 0, weightedSum = 0, topLevel = null, topCount = 0;
   for (var i = 0; i < data.length; i++) {
-    var l = data[i].level;
-    counts[l] = (counts[l] || 0) + 1;
-    sum += l;
+    var cnt = parseInt(data[i].cnt);
+    var lv = data[i].level;
+    total += cnt;
+    weightedSum += lv * cnt;
+    if (cnt > topCount) { topCount = cnt; topLevel = lv; }
   }
 
-  // Top level
-  var topLevel = null, topCount = 0;
-  for (var lv in counts) {
-    if (counts[lv] > topCount) { topCount = counts[lv]; topLevel = parseInt(lv); }
-  }
-
-  document.getElementById('stat-total').textContent = data.length;
-  document.getElementById('stat-top').textContent = 'L' + topLevel;
-  document.getElementById('stat-top-label').textContent = LEVEL_TITLES[topLevel] || '';
-  document.getElementById('stat-avg').textContent = (sum / data.length).toFixed(1);
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-top').textContent = topLevel ? 'L' + topLevel : '—';
+  document.getElementById('stat-top-label').textContent = topLevel ? (LEVEL_TITLES[topLevel] || '') : '';
+  document.getElementById('stat-avg').textContent = total ? (weightedSum / total).toFixed(1) : '—';
 }
 
 function renderChart(data) {
-  var counts = [0,0,0,0,0,0,0,0]; // index 0 = L1 .. index 7 = L8
+  var counts = [0,0,0,0,0,0,0,0];
   for (var i = 0; i < data.length; i++) {
     var lv = data[i].level;
-    if (lv >= 1 && lv <= 8) counts[lv - 1]++;
+    if (lv >= 1 && lv <= 8) counts[lv - 1] = parseInt(data[i].cnt);
   }
-
-  var labels = ['L1','L2','L3','L4','L5','L6','L7','L8'];
 
   if (chartInstance) { chartInstance.destroy(); }
 
@@ -295,7 +265,7 @@ function renderChart(data) {
   chartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: labels,
+      labels: ['L1','L2','L3','L4','L5','L6','L7','L8'],
       datasets: [{
         label: 'Počet účastníků',
         data: counts,
@@ -338,10 +308,7 @@ function renderChart(data) {
         },
         y: {
           beginAtZero: true,
-          ticks: {
-            color: '#5a6178', font: { family: 'JetBrains Mono', size: 11 },
-            stepSize: 1, precision: 0
-          },
+          ticks: { color: '#5a6178', font: { family: 'JetBrains Mono', size: 11 }, stepSize: 1, precision: 0 },
           grid: { color: 'rgba(37,42,56,0.6)' },
           border: { color: '#252a38' }
         }
@@ -350,66 +317,40 @@ function renderChart(data) {
   });
 }
 
-function renderTable(data) {
-  var tbody = document.getElementById('results-body');
-  if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:16px 0">Žádné záznamy</td></tr>';
-    return;
-  }
-  var rows = '';
-  // Show newest first
-  var sorted = data.slice().reverse();
-  for (var i = 0; i < sorted.length; i++) {
-    var r = sorted[i];
-    var dt = r.created_at ? new Date(r.created_at).toLocaleString('cs-CZ', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-    rows += '<tr>'
-      + '<td style="color:var(--text-muted)">' + (data.length - i) + '</td>'
-      + '<td>' + escHtml(r.name || '—') + '</td>'
-      + '<td><span class="level-chip">L' + r.level + '</span></td>'
-      + '<td style="color:var(--text-muted)">' + escHtml(r.level_title || LEVEL_TITLES[r.level] || '—') + '</td>'
-      + '<td style="color:var(--text-muted);font-family:\'JetBrains Mono\',monospace;font-size:11px">' + dt + '</td>'
-      + '</tr>';
-  }
-  tbody.innerHTML = rows;
-}
-
 function drawWinner() {
   var statusEl = document.getElementById('draw-status');
   var winnerBox = document.getElementById('winner-box');
   var drawBtn = document.getElementById('draw-btn');
 
-  if (!allResults.length) {
-    statusEl.textContent = '⚠ Nejsou žádné záznamy k losování.';
-    statusEl.className = 'status-msg err';
-    return;
-  }
-
-  // Animate
   winnerBox.classList.remove('visible');
   drawBtn.disabled = true;
   statusEl.textContent = 'Losuju…';
   statusEl.className = 'status-msg';
 
-  setTimeout(function() {
-    var idx = Math.floor(Math.random() * allResults.length);
-    var winner = allResults[idx];
-
+  rpc('get_random_winner')
+  .then(function(data) {
+    if (!data || !data.length) {
+      statusEl.textContent = '⚠ Žádné záznamy k losování.';
+      statusEl.className = 'status-msg err';
+      drawBtn.disabled = false;
+      return;
+    }
+    var winner = data[0];
     document.getElementById('winner-badge').textContent = 'L' + winner.level;
     document.getElementById('winner-level-label').textContent = 'Level ' + winner.level + ' z 8';
     document.getElementById('winner-name').textContent = winner.name || '—';
     document.getElementById('winner-title').textContent = winner.level_title || LEVEL_TITLES[winner.level] || '';
-
     winnerBox.classList.add('visible');
     statusEl.textContent = '';
     drawBtn.disabled = false;
-  }, 600);
+  })
+  .catch(function(err) {
+    statusEl.textContent = '⚠ Chyba: ' + err.message;
+    statusEl.className = 'status-msg err';
+    drawBtn.disabled = false;
+  });
 }
 
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// Auto-load on open
 loadData();
 </script>
 </body>
