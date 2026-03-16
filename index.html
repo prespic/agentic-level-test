@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Level Diagnostic — Steve Yegge Framework</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --bg: #0c0e14; --surface: #13161f; --surface2: #1a1e2a; --border: #252a38;
+    --accent: #4fffb0; --accent2: #7c6cff;
+    --text: #e2e6f0; --text-muted: #5a6178; --text-dim: #8892aa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 24px;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(ellipse 60% 40% at 20% 10%, rgba(76,255,176,0.04) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 50% at 80% 80%, rgba(124,108,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .wrapper { width: 100%; max-width: 680px; }
+  .header { margin-bottom: 40px; animation: fadeUp 0.5s ease both; }
+  .header-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .header-label::before { content: ''; display: inline-block; width: 20px; height: 1px; background: var(--accent); }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+  h1 span { color: var(--accent); }
+  .header-sub { margin-top: 8px; font-size: 14px; color: var(--text-dim); line-height: 1.5; }
+  .source-tag {
+    display: inline-flex; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
+    background: var(--surface); border: 1px solid var(--border); padding: 3px 8px;
+    border-radius: 4px; margin-top: 12px;
+  }
+  /* START */
+  .start-screen-btn {
+    width: 100%; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; color: #0c0e14; padding: 16px; border-radius: 8px; font-size: 16px;
+    font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .start-screen-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  /* PROGRESS */
+  .progress-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); text-align: right; margin-bottom: 8px; }
+  .progress-bar-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; height: 3px; margin-bottom: 32px; overflow: hidden; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
+  /* CARD */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent); opacity: 0.3;
+  }
+  /* QUIZ */
+  .q-number { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .question { font-size: 19px; font-weight: 500; line-height: 1.4; margin-bottom: 28px; letter-spacing: -0.01em; }
+  .options { display: flex; flex-direction: column; gap: 10px; }
+  .opt-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    padding: 14px 18px; border-radius: 8px; cursor: pointer; text-align: left;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.4;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .opt-btn:hover { border-color: var(--accent); background: rgba(79,255,176,0.06); transform: translateX(3px); }
+  .opt-key {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    background: rgba(79,255,176,0.1); padding: 2px 7px; border-radius: 3px;
+    flex-shrink: 0; letter-spacing: 0.05em; margin-top: 1px;
+  }
+  .binary-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .binary-opts .opt-btn { justify-content: center; text-align: center; flex-direction: column; align-items: center; padding: 18px; font-size: 15px; font-weight: 500; gap: 6px; }
+  .binary-opts .opt-btn .opt-key { margin-top: 0; }
+  .binary-opts .no-btn:hover { border-color: var(--accent2); background: rgba(124,108,255,0.08); }
+  /* RESULT */
+  .result-level-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 72px; font-weight: 700; line-height: 1; margin-bottom: 4px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .result-level-label { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 20px; }
+  .result-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 12px; }
+  .result-desc { font-size: 14px; color: var(--text-dim); line-height: 1.7; margin-bottom: 24px; }
+  .yegge-quote { background: var(--surface2); border-left: 3px solid var(--accent2); padding: 14px 18px; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--text-dim); font-style: italic; line-height: 1.6; margin-bottom: 28px; }
+  .yegge-quote strong { color: var(--text); font-style: normal; }
+  .spectrum { margin-bottom: 28px; }
+  .spectrum-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .spectrum-track { display: flex; gap: 4px; margin-bottom: 8px; }
+  .spectrum-dot { flex: 1; height: 6px; border-radius: 3px; background: var(--surface2); border: 1px solid var(--border); }
+  .spectrum-dot.active { background: linear-gradient(90deg, var(--accent), var(--accent2)); border-color: transparent; box-shadow: 0 0 8px rgba(79,255,176,0.4); }
+  .spectrum-dot.past { background: rgba(79,255,176,0.25); border-color: transparent; }
+  .spectrum-labels { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
+  .next-steps { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin-bottom: 24px; }
+  .next-steps-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .next-steps ul { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .next-steps li { font-size: 13px; color: var(--text-dim); line-height: 1.5; padding-left: 18px; position: relative; }
+  .next-steps li::before { content: '→'; position: absolute; left: 0; color: var(--accent2); }
+  /* SUBMIT FORM */
+  .submit-block {
+    border-top: 1px solid var(--border); margin-top: 28px; padding-top: 24px;
+  }
+  .submit-block-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 14px;
+  }
+  .name-row { display: flex; gap: 10px; }
+  .name-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 13px 16px; border-radius: 8px; font-size: 15px;
+    font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+  }
+  .name-input:focus { border-color: var(--accent); }
+  .name-input::placeholder { color: var(--text-muted); }
+  .submit-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; color: #0c0e14; padding: 13px 22px; border-radius: 8px; font-size: 14px;
+    font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  .submit-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .submit-btn:not(:disabled):hover { opacity: 0.88; }
+  .save-status { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 10px; min-height: 18px; color: var(--text-muted); }
+  .save-status.ok { color: var(--accent); }
+  .save-status.err { color: #ff5f57; }
+  /* ALREADY SUBMITTED */
+  .already-submitted {
+    border-top: 1px solid var(--border); margin-top: 28px; padding-top: 20px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .already-submitted::before { content: '✓'; color: var(--accent); font-size: 13px; }
+  /* RESTART */
+  .restart-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 12px 22px; border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500; width: 100%; margin-top: 12px;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .restart-btn:hover { border-color: var(--accent2); color: var(--text); background: rgba(124,108,255,0.06); }
+  .footer-note { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 20px; }
+  .hidden { display: none; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="header-label">Diagnostický test</div>
+    <h1>Na které úrovni jsi<br>v používání <span>AI agentů?</span></h1>
+    <p class="header-sub">Odpověz na max. 4 otázky a zjistíš, kde se nacházíš na Yeggeho škále.</p>
+    <div class="source-tag">Steve Yegge · The Pragmatic Engineer · 10. 2. 2026</div>
+  </div>
+
+  <!-- START -->
+  <div id="start-section">
+    <div class="card">
+      <div class="question" style="margin-bottom:24px">Připraven/a zjistit, na kterém levelu jsi?</div>
+      <button class="start-screen-btn" onclick="startQuiz()">Spustit test →</button>
+    </div>
+  </div>
+
+  <!-- QUIZ -->
+  <div id="quiz-section" class="hidden">
+    <div class="progress-label" id="progress-label">Otázka 1 z max. 4</div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+    <div class="card" id="question-card"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result-section" class="hidden">
+    <div class="card" id="result-card"></div>
+  </div>
+
+  <div class="footer-note">Zdroj: Steve Yegge interview · Gergely Orosz, The Pragmatic Engineer</div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://uqkqjtokxkdvkyipotpr.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_KLVwIASR384rqa_GYClOJA__rpZAxmv';
+
+var stepCount = 0;
+var currentLevel = null;
+var currentTitle = null;
+
+var LEVELS = {
+  1: { title: 'Bez AI', quote: '"I feel sorry for people who are good engineers and they use Cursor, ask it questions sometimes, review its code really carefully... dude, you\'re going to get fired."', desc: 'Zatím nepoužíváš žádné AI coding nástroje. Jsi v menšině — přes 85 % vývojářů je již pravidelně používá. Neznamená to, že jsi špatný inženýr, ale riziko zaostání rychle roste.', steps: ['Vyzkoušej GitHub Copilot nebo Cursor — stačí IDE, které znáš', 'Začni jen s autocomplete, žádné velké závazky', 'Cíl: Level 2 do dvou týdnů'] },
+  2: { title: 'IDE Agent — opatrný review', quote: '"Coding agent in your IDE, permissions turned on."', desc: 'Máš agenta v IDE a používáš ho, ale pečlivě reviewuješ každý výstup. Správný start — ale overhead review tě brzdí víc, než si možná uvědomuješ.', steps: ['Zkus jednou přijmout output bez čtení každého řádku — sleduj co se stane', 'Zjisti, jak moc ti vadí chyby vs. kolik času ušetříš', 'Level 3 je blíž, než si myslíš — jde jen o důvěru'] },
+  3: { title: 'YOLO mód — rostoucí důvěra', quote: '"Coding agent in IDE, YOLO mode. Your trust is going up."', desc: 'Pouštíš agenta s důvěrou a neřešíš každý detail. Produktivita výrazně roste. Klíčový další posun: přestat sledovat diffy a začít sledovat konverzaci.', steps: ['Zkus přepnout pozornost z kódu na konverzaci s agentem', 'Experimentuj s delšími úkoly bez micromanagementu', 'Zvažuj CLI agenta (Claude Code, Aider) jako doplněk'] },
+  4: { title: 'Konverzační mód', quote: '"You\'re starting to not look at the diffs anymore, but at what the agent is doing... you\'re really focused on the conversation with the agent."', desc: 'Přemýšlíš jako product owner, ne coder. Sleduješ záměr a výsledek, ne řádky kódu. Tohle je zásadní kognitivní posun — přestáváš být pisatelem a stáváš se ředitelem.', steps: ['Zkus pracovat čistě z CLI — bez IDE jako primárního rozhraní', 'Piš delší task descriptions jako mini-PRD', 'Level 5 = zbavit se IDE jako pracovního prostoru'] },
+  5: { title: 'Agent-first', quote: '"Your approach is: I just want the agent and I\'ll look at the code in my IDE later, but I\'m not coding with my IDE."', desc: 'IDE ti slouží jen jako prohlížeč výsledků, ne pracovní prostředí. Jsi v menšině nejpokročilejších vývojářů. Přirozený další krok: spouštět více agentů najednou.', steps: ['Spusť druhého agenta na jiný task, dokud první pracuje', 'Sleduj, jestli dokážeš efektivně přepínat mezi dvěma konverzacemi', 'Level 6 = zjistíš, že jeden agent nestačí'] },
+  6: { title: 'Multiplexer — souběžní agenti', quote: '"You\'re bored because your agent\'s busy and you want to do something, so you fire up another agent, then another. And you find yourself just multiplexing between them."', desc: 'Paralelizuješ práci přes několik agentů. Jsi na frontě toho, co dnes většina vývojářů nedělá. Začínáš ale pociťovat koordinační overhead.', steps: ['Zapiš si pravidla — který agent dostane jaký typ úkolu', 'Experimentuj s 5, pak 10 agenty najednou', 'Začni cítit bolest koordinace — to tě posune na L7'] },
+  7: { title: '10+ agentů — ruční koordinace', quote: '"Oh gosh, I\'ve made a mess! I accidentally texted the wrong agent. How do I coordinate all these agents? What if Claude Code could run Claude Code?"', desc: 'Pracuješ s mnoha agenty ručně a narážíš na limity koordinace. Jsi v absolutní špičce — bolest správy tě přirozeně táhne k Level 8: vlastní orchestrátor.', steps: ['Zkus Gas Town od Yeggeho — open-source orchestrátor', 'Nebo si navrhni vlastní koordinační schéma', 'Level 8 = napíšeš si vlastní systém pro správu agentů'] },
+  8: { title: 'Orchestrátor', quote: '"You build your own orchestrator to coordinate more agents."', desc: 'Inženýruješ inženýrský proces samotný. Nepoužíváš jen nástroje — tvoříš je. Tohle je Yeggeho Level 8: Gas Town. Velmi malá skupina vývojářů na světě je zde.', steps: ['Sdílej svůj přístup s komunitou — co fungovalo, co ne', 'Podívej se na A2A protokol (Google) pro agent-to-agent komunikaci', 'Tady Yeggeho škála zatím končí — ale ty víš, co přijde dál'] }
+};
+
+var QUESTIONS = {
+  q1: { text: 'Kde primárně pracuješ s AI coding agentem?', type: 'multi', options: [
+    { label: 'V IDE (Cursor, VS Code + Copilot, Windsurf…) — agent je součástí editoru', next: 'q2a' },
+    { label: 'Mimo IDE — v terminálu nebo CLI (Claude Code, Aider, Codex CLI…)', next: 'q2b' },
+    { label: 'AI coding agenta zatím nepoužívám', result: 1 }
+  ]},
+  q2a: { text: 'Čteš pečlivě každý diff a navržený kód, který agent vygeneruje?', type: 'binary', yes: 'q3a', no: 'q3b' },
+  q3a: { text: 'Používáš agenta pravidelně — alespoň několikrát týdně?', type: 'binary', yes: 2, no: 1 },
+  q3b: { text: 'Kde je při práci s agentem tvoje hlavní pozornost?', type: 'multi', options: [
+    { label: 'Sleduji průběžně co agent dělá — kód i konverzaci, ale nereguji každý řádek', result: 3 },
+    { label: 'Soustředím se hlavně na konverzaci a záměr — kód v IDE prohlédnu až nakonec', result: 4 }
+  ]},
+  q2b: { text: 'Spouštíš více agentů paralelně — máš typicky více agentů běžet najednou?', type: 'binary', yes: 'q4', no: 5 },
+  q4: { text: 'Kolik agentů máš obvykle spuštěných najednou?', type: 'multi', options: [
+    { label: 'Několik — obvykle 2 až 5, přepínám mezi nimi ručně', result: 6 },
+    { label: 'Hodně — obvykle 6 a více, začíná to být nepřehledné', result: 7 },
+    { label: 'Napsal/a jsem si vlastní systém nebo skript, který agenty koordinuje automaticky', result: 8 }
+  ]}
+};
+
+function alreadySubmitted() {
+  return localStorage.getItem('yegge_submitted') === 'true';
+}
+
+function startQuiz() {
+  stepCount = 0;
+  document.getElementById('start-section').classList.add('hidden');
+  document.getElementById('result-section').classList.add('hidden');
+  document.getElementById('quiz-section').classList.remove('hidden');
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-label').textContent = 'Otázka 1 z max. 4';
+  renderQuestion('q1');
+}
+
+function renderQuestion(qid) {
+  var q = QUESTIONS[qid];
+  if (!q) return;
+  stepCount++;
+  document.getElementById('progress-label').textContent = 'Otázka ' + stepCount + ' z max. 4';
+  document.getElementById('progress-bar').style.width = Math.round(((stepCount-1)/4)*100) + '%';
+
+  var html = '<div class="q-number">Otázka ' + stepCount + '</div><div class="question">' + q.text + '</div>';
+  if (q.type === 'binary') {
+    html += '<div class="options binary-opts">'
+      + '<button class="opt-btn yes-btn" onclick="handleBinary(\'' + qid + '\',\'yes\')">'
+      + '<span class="opt-key">ANO</span>Ano, platí to</button>'
+      + '<button class="opt-btn no-btn" onclick="handleBinary(\'' + qid + '\',\'no\')">'
+      + '<span class="opt-key">NE</span>Ne, neplatí</button></div>';
+  } else {
+    var keys = ['A','B','C','D','E'];
+    html += '<div class="options">';
+    for (var i = 0; i < q.options.length; i++) {
+      var opt = q.options[i];
+      if (opt.result !== undefined) {
+        html += '<button class="opt-btn" onclick="showResult(' + opt.result + ')">'
+          + '<span class="opt-key">' + keys[i] + '</span><span>' + opt.label + '</span></button>';
+      } else {
+        html += '<button class="opt-btn" onclick="renderQuestion(\'' + opt.next + '\')">'
+          + '<span class="opt-key">' + keys[i] + '</span><span>' + opt.label + '</span></button>';
+      }
+    }
+    html += '</div>';
+  }
+
+  var card = document.getElementById('question-card');
+  card.style.opacity = '0'; card.style.transform = 'translateY(10px)';
+  card.innerHTML = html;
+  setTimeout(function() {
+    card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    card.style.opacity = '1'; card.style.transform = 'translateY(0)';
+  }, 20);
+}
+
+function handleBinary(qid, choice) {
+  var q = QUESTIONS[qid];
+  var outcome = choice === 'yes' ? q.yes : q.no;
+  if (typeof outcome === 'number') showResult(outcome);
+  else renderQuestion(outcome);
+}
+
+function showResult(levelNum) {
+  currentLevel = levelNum;
+  currentTitle = LEVELS[levelNum].title;
+  var lv = LEVELS[levelNum];
+
+  document.getElementById('quiz-section').classList.add('hidden');
+  document.getElementById('progress-bar').style.width = '100%';
+
+  var dots = '';
+  for (var i = 1; i <= 8; i++) {
+    if (i === levelNum) dots += '<div class="spectrum-dot active"></div>';
+    else if (i < levelNum) dots += '<div class="spectrum-dot past"></div>';
+    else dots += '<div class="spectrum-dot"></div>';
+  }
+  var stepsHtml = '';
+  for (var j = 0; j < lv.steps.length; j++) stepsHtml += '<li>' + lv.steps[j] + '</li>';
+
+  // Submit blok — zobrazit jen pokud ještě neodesláno
+  var submitHtml;
+  if (alreadySubmitted()) {
+    submitHtml = '<div class="already-submitted">Výsledek byl již odeslán. Díky za účast!</div>';
+  } else {
+    submitHtml = '<div class="submit-block">'
+      + '<div class="submit-block-title">Zadat jméno a odeslat výsledek</div>'
+      + '<div class="name-row">'
+      + '<input class="name-input" id="name-input" type="text" placeholder="Jan Novák" maxlength="80" oninput="onNameInput()" />'
+      + '<button class="submit-btn" id="submit-btn" disabled onclick="submitResult()">Odeslat</button>'
+      + '</div>'
+      + '<div class="save-status" id="save-status"></div>'
+      + '</div>';
+  }
+
+  document.getElementById('result-card').innerHTML =
+    '<div class="result-level-badge">L' + levelNum + '</div>'
+    + '<div class="result-level-label">Level ' + levelNum + ' z 8</div>'
+    + '<div class="result-title">' + lv.title + '</div>'
+    + '<div class="result-desc">' + lv.desc + '</div>'
+    + '<div class="yegge-quote"><strong>Yegge o tomto levelu:</strong><br>' + lv.quote + '</div>'
+    + '<div class="spectrum"><div class="spectrum-label">Tvoje pozice na škále</div>'
+    + '<div class="spectrum-track">' + dots + '</div>'
+    + '<div class="spectrum-labels"><span>L1 · Bez AI</span><span>L8 · Orchestrátor</span></div></div>'
+    + '<div class="next-steps"><div class="next-steps-title">Co zkusit dál</div><ul>' + stepsHtml + '</ul></div>'
+    + submitHtml
+    + '<button class="restart-btn" onclick="startQuiz()">&#8635; Zkusit znovu</button>';
+
+  document.getElementById('result-section').classList.remove('hidden');
+}
+
+function onNameInput() {
+  var val = document.getElementById('name-input').value.trim();
+  document.getElementById('submit-btn').disabled = val.length < 2;
+}
+
+function submitResult() {
+  var name = document.getElementById('name-input').value.trim();
+  if (name.length < 2) return;
+
+  var btn = document.getElementById('submit-btn');
+  var status = document.getElementById('save-status');
+  btn.disabled = true;
+  status.textContent = 'Odesílám…';
+  status.className = 'save-status';
+
+  fetch(SUPABASE_URL + '/rest/v1/results', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({ name: name, level: currentLevel, level_title: currentTitle })
+  })
+  .then(function(res) {
+    if (res.ok) {
+      localStorage.setItem('yegge_submitted', 'true');
+      // Nahradit celý submit blok potvrzením
+      var block = document.querySelector('.submit-block');
+      if (block) {
+        block.outerHTML = '<div class="already-submitted">Výsledek odeslán. Díky, ' + name + '!</div>';
+      }
+    } else {
+      status.textContent = '⚠ Nepodařilo se odeslat. Zkus to znovu.';
+      status.className = 'save-status err';
+      btn.disabled = false;
+    }
+  })
+  .catch(function() {
+    status.textContent = '⚠ Chyba připojení. Zkus to znovu.';
+    status.className = 'save-status err';
+    btn.disabled = false;
+  });
+}
+</script>
+</body>
+</html>

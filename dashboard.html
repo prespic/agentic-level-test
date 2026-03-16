@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Yegge AI Level</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --bg: #0c0e14; --surface: #13161f; --surface2: #1a1e2a; --border: #252a38;
+    --accent: #4fffb0; --accent2: #7c6cff;
+    --text: #e2e6f0; --text-muted: #5a6178; --text-dim: #8892aa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 40px 24px;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(ellipse 60% 40% at 20% 10%, rgba(76,255,176,0.04) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 50% at 80% 80%, rgba(124,108,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .wrapper { width: 100%; max-width: 760px; }
+
+  /* HEADER */
+  .header { margin-bottom: 36px; }
+  .header-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .header-label::before { content: ''; display: inline-block; width: 20px; height: 1px; background: var(--accent); }
+  h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+
+  /* STATS ROW */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+  /* CARD */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px; position: relative; overflow: hidden; margin-bottom: 16px;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent); opacity: 0.3;
+  }
+  .card-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 22px;
+  }
+
+  /* CHART */
+  .chart-wrap { position: relative; height: 260px; }
+
+  /* REFRESH */
+  .refresh-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .refresh-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 8px 16px; border-radius: 7px; cursor: pointer; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.05em; transition: border-color 0.2s, color 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* LOSOVÁNÍ */
+  .draw-btn {
+    width: 100%; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; color: #0c0e14; padding: 16px; border-radius: 8px; font-size: 16px;
+    font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s; margin-bottom: 20px;
+  }
+  .draw-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .draw-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  .winner-box {
+    background: var(--surface2); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 24px; text-align: center; display: none;
+  }
+  .winner-box.visible { display: block; animation: fadeUp 0.4s ease both; }
+  .winner-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 56px; font-weight: 700; line-height: 1;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 4px;
+  }
+  .winner-level-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .winner-name { font-size: 26px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; margin-bottom: 4px; }
+  .winner-title { font-size: 13px; color: var(--text-dim); }
+
+  .draw-again-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 10px 20px; border-radius: 7px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500; margin-top: 18px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .draw-again-btn:hover { border-color: var(--accent2); color: var(--text); }
+
+  /* STATUS */
+  .status-msg { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px 0; }
+  .status-msg.err { color: #ff5f57; }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.08em; padding: 0 12px 10px 0;
+    text-align: left; border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 10px 12px 10px 0; color: var(--text-dim); border-bottom: 1px solid rgba(37,42,56,0.5); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { color: var(--text); }
+  .level-chip {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    background: rgba(79,255,176,0.1); padding: 2px 8px; border-radius: 4px; display: inline-block;
+  }
+
+  @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <div class="header-label">Organizátor</div>
+    <h1>Yegge AI Level — <span>Dashboard</span></h1>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Celkem odpovědí</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub">účastníků</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Nejčastější level</div>
+      <div class="stat-value" id="stat-top">—</div>
+      <div class="stat-sub" id="stat-top-label">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Průměrný level</div>
+      <div class="stat-value" id="stat-avg">—</div>
+      <div class="stat-sub">z 8</div>
+    </div>
+  </div>
+
+  <!-- REFRESH -->
+  <div class="refresh-row">
+    <button class="refresh-btn" id="refresh-btn" onclick="loadData()">↻ Obnovit data</button>
+  </div>
+
+  <!-- CHART -->
+  <div class="card">
+    <div class="card-title">Rozložení levelů</div>
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="status-msg" id="chart-status">Načítám data…</div>
+  </div>
+
+  <!-- LOSOVÁNÍ -->
+  <div class="card">
+    <div class="card-title">Losování výherce</div>
+    <button class="draw-btn" id="draw-btn" onclick="drawWinner()">🎲 Vylosovat náhodně</button>
+    <div class="winner-box" id="winner-box">
+      <div class="winner-badge" id="winner-badge">L?</div>
+      <div class="winner-level-label" id="winner-level-label">Level ? z 8</div>
+      <div class="winner-name" id="winner-name">—</div>
+      <div class="winner-title" id="winner-title">—</div>
+      <br>
+      <button class="draw-again-btn" onclick="drawWinner()">↻ Losovat znovu</button>
+    </div>
+    <div class="status-msg" id="draw-status"></div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    <div class="card-title">Všechny záznamy</div>
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead><tr><th>#</th><th>Jméno</th><th>Level</th><th>Název</th><th>Čas</th></tr></thead>
+        <tbody id="results-body"><tr><td colspan="5" style="color:var(--text-muted);padding:16px 0">Načítám…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var SUPABASE_URL = 'https://uqkqjtokxkdvkyipotpr.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_KLVwIASR384rqa_GYClOJA__rpZAxmv';
+
+var LEVEL_TITLES = {
+  1: 'Bez AI', 2: 'IDE Agent — opatrný review', 3: 'YOLO mód',
+  4: 'Konverzační mód', 5: 'Agent-first', 6: 'Multiplexer',
+  7: '10+ agentů', 8: 'Orchestrátor'
+};
+
+var allResults = [];
+var chartInstance = null;
+
+function apiHeaders() {
+  return {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY
+  };
+}
+
+function loadData() {
+  var btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '↻ Načítám…';
+  document.getElementById('chart-status').textContent = 'Načítám data…';
+  document.getElementById('chart-status').className = 'status-msg';
+
+  fetch(SUPABASE_URL + '/rest/v1/results?select=*&order=created_at.asc', {
+    headers: apiHeaders()
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(data) {
+    allResults = data;
+    renderStats(data);
+    renderChart(data);
+    renderTable(data);
+    document.getElementById('chart-status').textContent = '';
+    btn.disabled = false;
+    btn.textContent = '↻ Obnovit data';
+  })
+  .catch(function(err) {
+    document.getElementById('chart-status').textContent = '⚠ Chyba načítání: ' + err.message;
+    document.getElementById('chart-status').className = 'status-msg err';
+    btn.disabled = false;
+    btn.textContent = '↻ Zkusit znovu';
+  });
+}
+
+function renderStats(data) {
+  if (!data.length) {
+    document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-top').textContent = '—';
+    document.getElementById('stat-top-label').textContent = 'žádná data';
+    document.getElementById('stat-avg').textContent = '—';
+    return;
+  }
+
+  // Count per level
+  var counts = {};
+  var sum = 0;
+  for (var i = 0; i < data.length; i++) {
+    var l = data[i].level;
+    counts[l] = (counts[l] || 0) + 1;
+    sum += l;
+  }
+
+  // Top level
+  var topLevel = null, topCount = 0;
+  for (var lv in counts) {
+    if (counts[lv] > topCount) { topCount = counts[lv]; topLevel = parseInt(lv); }
+  }
+
+  document.getElementById('stat-total').textContent = data.length;
+  document.getElementById('stat-top').textContent = 'L' + topLevel;
+  document.getElementById('stat-top-label').textContent = LEVEL_TITLES[topLevel] || '';
+  document.getElementById('stat-avg').textContent = (sum / data.length).toFixed(1);
+}
+
+function renderChart(data) {
+  var counts = [0,0,0,0,0,0,0,0]; // index 0 = L1 .. index 7 = L8
+  for (var i = 0; i < data.length; i++) {
+    var lv = data[i].level;
+    if (lv >= 1 && lv <= 8) counts[lv - 1]++;
+  }
+
+  var labels = ['L1','L2','L3','L4','L5','L6','L7','L8'];
+
+  if (chartInstance) { chartInstance.destroy(); }
+
+  var ctx = document.getElementById('chart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Počet účastníků',
+        data: counts,
+        backgroundColor: function(ctx) {
+          var grad = ctx.chart.ctx.createLinearGradient(0, 0, 0, 260);
+          grad.addColorStop(0, 'rgba(79,255,176,0.85)');
+          grad.addColorStop(1, 'rgba(124,108,255,0.55)');
+          return grad;
+        },
+        borderColor: 'rgba(79,255,176,0.4)',
+        borderWidth: 1,
+        borderRadius: 5,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1e2a',
+          borderColor: '#252a38',
+          borderWidth: 1,
+          titleColor: '#4fffb0',
+          bodyColor: '#8892aa',
+          titleFont: { family: 'JetBrains Mono', size: 12 },
+          bodyFont: { family: 'DM Sans', size: 13 },
+          callbacks: {
+            title: function(items) { return items[0].label + ' — ' + (LEVEL_TITLES[parseInt(items[0].label.slice(1))] || ''); },
+            label: function(item) { return item.raw + ' účastníků'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6178', font: { family: 'JetBrains Mono', size: 11 } },
+          grid: { color: 'rgba(37,42,56,0.6)' },
+          border: { color: '#252a38' }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: '#5a6178', font: { family: 'JetBrains Mono', size: 11 },
+            stepSize: 1, precision: 0
+          },
+          grid: { color: 'rgba(37,42,56,0.6)' },
+          border: { color: '#252a38' }
+        }
+      }
+    }
+  });
+}
+
+function renderTable(data) {
+  var tbody = document.getElementById('results-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:16px 0">Žádné záznamy</td></tr>';
+    return;
+  }
+  var rows = '';
+  // Show newest first
+  var sorted = data.slice().reverse();
+  for (var i = 0; i < sorted.length; i++) {
+    var r = sorted[i];
+    var dt = r.created_at ? new Date(r.created_at).toLocaleString('cs-CZ', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+    rows += '<tr>'
+      + '<td style="color:var(--text-muted)">' + (data.length - i) + '</td>'
+      + '<td>' + escHtml(r.name || '—') + '</td>'
+      + '<td><span class="level-chip">L' + r.level + '</span></td>'
+      + '<td style="color:var(--text-muted)">' + escHtml(r.level_title || LEVEL_TITLES[r.level] || '—') + '</td>'
+      + '<td style="color:var(--text-muted);font-family:\'JetBrains Mono\',monospace;font-size:11px">' + dt + '</td>'
+      + '</tr>';
+  }
+  tbody.innerHTML = rows;
+}
+
+function drawWinner() {
+  var statusEl = document.getElementById('draw-status');
+  var winnerBox = document.getElementById('winner-box');
+  var drawBtn = document.getElementById('draw-btn');
+
+  if (!allResults.length) {
+    statusEl.textContent = '⚠ Nejsou žádné záznamy k losování.';
+    statusEl.className = 'status-msg err';
+    return;
+  }
+
+  // Animate
+  winnerBox.classList.remove('visible');
+  drawBtn.disabled = true;
+  statusEl.textContent = 'Losuju…';
+  statusEl.className = 'status-msg';
+
+  setTimeout(function() {
+    var idx = Math.floor(Math.random() * allResults.length);
+    var winner = allResults[idx];
+
+    document.getElementById('winner-badge').textContent = 'L' + winner.level;
+    document.getElementById('winner-level-label').textContent = 'Level ' + winner.level + ' z 8';
+    document.getElementById('winner-name').textContent = winner.name || '—';
+    document.getElementById('winner-title').textContent = winner.level_title || LEVEL_TITLES[winner.level] || '';
+
+    winnerBox.classList.add('visible');
+    statusEl.textContent = '';
+    drawBtn.disabled = false;
+  }, 600);
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Auto-load on open
+loadData();
+</script>
+</body>
+</html>
