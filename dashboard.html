@@ -145,12 +145,12 @@
     <div class="stat-card">
       <div class="stat-label">Celkem odpovědí</div>
       <div class="stat-value" id="stat-total">—</div>
-      <div class="stat-sub">účastníků</div>
+      <div class="stat-sub" id="stat-total-sub">účastníků</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Nejčastější level</div>
       <div class="stat-value" id="stat-top">—</div>
-      <div class="stat-sub" id="stat-top-label">–</div>
+      <div class="stat-sub" id="stat-top-label">—</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Průměrný level</div>
@@ -176,7 +176,7 @@
   <!-- LOSOVÁNÍ -->
   <div class="card">
     <div class="card-title">Losování výherce</div>
-    <button class="draw-btn" id="draw-btn" onclick="drawWinner()">🎲 Vylosovat náhodně</button>
+    <button class="draw-btn" id="draw-btn" onclick="drawWinner()">🎲 Vylosovat výherce</button>
     <div class="winner-box" id="winner-box">
       <div class="winner-badge" id="winner-badge">L?</div>
       <div class="winner-level-label" id="winner-level-label">Level ? z 8</div>
@@ -200,14 +200,20 @@
 </footer>
 
 <script>
-var SUPABASE_URL = 'https://uqkqjtokxkdvkyipotpr.supabase.co';
-var SUPABASE_KEY = 'sb_publishable_KLVwIASR384rqa_GYClOJA__rpZAxmv';
+var SUPABASE_URL = 'https://xinwfwnkismpysxpxopp.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_APFfnfSxN4gsFw0aTjvuTA_JLyEqSFk';
 
 var LEVEL_TITLES = {
-  1: 'Bez AI', 2: 'IDE Agent — opatrný review', 3: 'YOLO mód',
+  1: 'Bez AI', 2: 'Agent s dohledem', 3: 'YOLO mód',
   4: 'Konverzační mód', 5: 'Agent-first', 6: 'Multiplexer',
   7: '10+ agentů', 8: 'Orchestrátor'
 };
+
+function pluralUcastnik(n) {
+  if (n === 1) return 'účastník';
+  if (n >= 2 && n <= 4) return 'účastníci';
+  return 'účastníků';
+}
 
 var chartInstance = null;
 
@@ -256,6 +262,7 @@ function loadData() {
 function renderStats(data) {
   if (!data.length) {
     document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-total-sub').textContent = 'účastníků';
     document.getElementById('stat-top').textContent = '—';
     document.getElementById('stat-top-label').textContent = 'žádná data';
     document.getElementById('stat-avg').textContent = '—';
@@ -272,6 +279,7 @@ function renderStats(data) {
   }
 
   document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-total-sub').textContent = pluralUcastnik(total);
   document.getElementById('stat-top').textContent = topLevel ? 'L' + topLevel : '—';
   document.getElementById('stat-top-label').textContent = topLevel ? (LEVEL_TITLES[topLevel] || '') : '';
   document.getElementById('stat-avg').textContent = total ? (weightedSum / total).toFixed(1) : '—';
@@ -321,7 +329,7 @@ function renderChart(data) {
           bodyFont: { family: 'DM Sans', size: 13 },
           callbacks: {
             title: function(items) { return items[0].label + ' — ' + (LEVEL_TITLES[parseInt(items[0].label.slice(1))] || ''); },
-            label: function(item) { return item.raw + ' účastníků'; }
+            label: function(item) { return item.raw + ' ' + pluralUcastnik(item.raw); }
           }
         }
       },
@@ -349,7 +357,7 @@ function drawWinner() {
 
   winnerBox.classList.remove('visible');
   drawBtn.disabled = true;
-  statusEl.textContent = 'Losuju…';
+  statusEl.textContent = 'Losuji…';
   statusEl.className = 'status-msg';
 
   rpc('get_random_winner')
